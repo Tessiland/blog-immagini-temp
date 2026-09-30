@@ -1,0 +1,35 @@
+name: Pulizia immagini vecchie
+
+on:
+  schedule:
+    - cron: "17 2 * * *"   # ogni notte alle 02:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pulizia:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Cancella le immagini caricate da più di 48 ore
+        run: |
+          limite=$(( $(date +%s) - 48*3600 ))
+          rimossi=0
+          while IFS= read -r -d '' f; do
+            ts=$(git log -1 --format=%ct -- "$f")
+            if [ -n "$ts" ] && [ "$ts" -lt "$limite" ]; then
+              git rm -q -- "$f"; echo "Rimosso: $f"; rimossi=$((rimossi+1))
+            fi
+          done < <(find img -type f ! -name .gitkeep -print0)
+          if [ "$rimossi" -gt 0 ]; then
+            git config user.name "pulizia-automatica"
+            git config user.email "actions@users.noreply.github.com"
+            git commit -q -m "Pulizia automatica: $rimossi immagini oltre 48 ore"
+            git push
+          else
+            echo "Niente da pulire."
+          fi
